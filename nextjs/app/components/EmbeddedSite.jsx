@@ -15,6 +15,10 @@ export default function EmbeddedSite({ page }) {
 
     const base = `/embed/${page}`;
     const added = []; // track injected <head> nodes for cleanup
+    // Cache-buster: ensures a fresh deploy's markup/css/scripts load without a
+    // manual hard-refresh. Same-origin embed assets only; external CDNs untouched.
+    const v = Date.now();
+    const bust = (u) => (u && u.charAt(0) === "/") ? (u + (u.indexOf("?") < 0 ? "?" : "&") + "v=" + v) : u;
 
     function injectStyle(css) {
       const el = document.createElement("style");
@@ -44,10 +48,10 @@ export default function EmbeddedSite({ page }) {
     }
 
     (async () => {
-      const manifest = await fetch(`${base}/manifest.json`).then((r) => r.json());
+      const manifest = await fetch(`${base}/manifest.json?v=${v}`, { cache: "no-store" }).then((r) => r.json());
       const [body, css] = await Promise.all([
-        fetch(`${base}/body.html`).then((r) => r.text()),
-        fetch(`${base}/style.css`).then((r) => r.text()),
+        fetch(`${base}/body.html?v=${v}`, { cache: "no-store" }).then((r) => r.text()),
+        fetch(`${base}/style.css?v=${v}`, { cache: "no-store" }).then((r) => r.text()),
       ]);
 
       // baseline so the page's `body{...}` (remapped to #embed-root) lays out full-height
@@ -64,7 +68,7 @@ export default function EmbeddedSite({ page }) {
       // the original code listens for (DOMContentLoaded / load).
       for (const src of manifest.scripts || []) {
         // eslint-disable-next-line no-await-in-loop
-        await loadScript(src);
+        await loadScript(bust(src));
       }
       try { document.dispatchEvent(new Event("DOMContentLoaded")); } catch (e) {}
       try { window.dispatchEvent(new Event("load")); } catch (e) {}
