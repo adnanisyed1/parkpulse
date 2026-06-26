@@ -182,7 +182,36 @@ function doSearch(q){
   var box=document.getElementById('results');
   if(!q||q.length<3){box.classList.remove('show');box.innerHTML='';return;}
   if(placesNew()){googleSearch(q,box);return;}
+  if(typeof google!=='undefined'&&google.maps&&google.maps.Geocoder){geocoderSearch(q,box);return;}
   photonSearch(q,box);
+}
+function addFoundStop(name,lat,lng,kind,address){
+  trip.stops.push({name:name,lat:lat,lng:lng,custom:true,kind:kind||'',address:address||'',nights:0,lodge:''});
+  document.getElementById('placeq').value='';
+  var box=document.getElementById('results');box.classList.remove('show');box.innerHTML='';acToken=null;
+  render(true);toast('Added '+name);
+}
+// Classic Google Geocoder — resolves a full typed address (street + apt/unit + ZIP)
+// to coordinates. Needs only the Geocoding API enabled on your key.
+function geocoderSearch(q,box){
+  new google.maps.Geocoder().geocode({address:q,region:'us'},function(res,status){
+    if(status!=='OK'||!res||!res.length){
+      box.innerHTML='<div class="r"><span>No address match — try adding the city, state or ZIP.</span></div>';
+      box.classList.add('show');return;
+    }
+    box.innerHTML='';
+    res.slice(0,5).forEach(function(r){
+      var loc=r.geometry&&r.geometry.location;if(!loc)return;
+      var full=r.formatted_address||q, parts=full.split(',');
+      var main=parts[0], sec=parts.slice(1).join(',').trim();
+      var row=document.createElement('div');row.className='r';
+      row.innerHTML='<b>'+esc(main)+'</b>'+(sec?'<span>'+esc(sec)+'</span>':'');
+      row.onmousedown=function(e){e.preventDefault();};
+      row.onclick=function(){addFoundStop(main,loc.lat(),loc.lng(),'address',full);};
+      box.appendChild(row);
+    });
+    box.classList.add('show');
+  });
 }
 function googleSearch(q,box){
   var P=placesNew();
@@ -218,7 +247,7 @@ function photonSearch(q,box){
    .then(function(d){
      var fs=(d.features||[]);
      if(!fs.length){box.innerHTML='<div class="r"><span>No matches — try a different name.</span></div>';box.classList.add('show');return;}
-     box.innerHTML=fs.map(function(f){var p=f.properties||{},g=f.geometry.coordinates;var nm=p.name||p.street||'Place';var ctx=[p.city,p.state,p.country].filter(Boolean).join(', ');var kind=(p.osm_value||p.type||'').replace(/_/g,' ');
+     box.innerHTML=fs.map(function(f){var p=f.properties||{},g=f.geometry.coordinates;var nm=p.name||((p.housenumber?p.housenumber+' ':'')+(p.street||''))||p.street||'Place';var ctx=[p.city,p.state,p.postcode,p.country].filter(Boolean).join(', ');var kind=(p.osm_value||p.type||'').replace(/_/g,' ');
        return '<div class="r" data-lat="'+g[1]+'" data-lng="'+g[0]+'" data-nm="'+nm.replace(/"/g,'&quot;')+'" data-k="'+kind+'">'+(kind?'<span class="k">'+kind+'</span>':'')+'<b>'+nm+'</b><span>'+ctx+'</span></div>';}).join('');
      box.classList.add('show');
      box.querySelectorAll('.r').forEach(function(r){var lat=r.getAttribute('data-lat');if(!lat)return;r.onclick=function(){trip.stops.push({name:r.getAttribute('data-nm'),lat:+lat,lng:+r.getAttribute('data-lng'),custom:true,kind:r.getAttribute('data-k')||'',nights:0,lodge:''});document.getElementById('placeq').value='';box.classList.remove('show');render(true);};});
@@ -295,6 +324,7 @@ function boot(){
   };
   var pq=document.getElementById('placeq');
   pq.addEventListener('input',function(e){clearTimeout(searchT);var v=e.target.value;searchT=setTimeout(function(){doSearch(v);},320);});
+  pq.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();clearTimeout(searchT);doSearch(e.target.value);}});
   pq.addEventListener('blur',function(){setTimeout(function(){document.getElementById('results').classList.remove('show');},180);});
   document.getElementById('sh-copy').onclick=function(){var u=shareData().url;if(navigator.clipboard){navigator.clipboard.writeText(u).then(function(){toast('Trip link copied!');},function(){prompt('Copy this link:',u);});}else prompt('Copy this link:',u);};
   document.getElementById('sh-native').onclick=function(){var sd=shareData();if(navigator.share)navigator.share({title:trip.name||'ParkPulse trip',text:sd.text,url:sd.url}).catch(function(){});else{if(navigator.clipboard)navigator.clipboard.writeText(sd.url);toast('Link copied — paste it anywhere');}};
